@@ -11,6 +11,6 @@
     "name": "Jira",
     "nameSlug": "jira",
     "classFile": "JiraApp.ts",
-    "description": "Jira Integration for Rocket.Chat",
+    "description": "Jira Integration for Rocket.Chat that lets users create, view, update, and comment on Jira issues directly from Rocket.Chat while receiving real-time Jira updates. The app is designed to reduce context switching and improve team collaboration by bringing Jira workflows into the chat environment.\n\nIt requests Jira OAuth scopes to read and write Jira work items, read Jira user and profile information, manage Jira webhooks for live updates, and maintain offline access so tokens can be refreshed securely.",
     "implements": []
 }

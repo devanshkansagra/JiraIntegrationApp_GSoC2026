@@ -8,7 +8,7 @@ import { getCallbackURL } from "./getEndpointURLS";
 export async function getAuthorizationURL(app: JiraApp, read: IRead, user: IUser) {
     const { clientId } = await getCredentials(read);
 
-    const baseURL = URLEnum.baseURL;
+    const baseURL = URLEnum.AUTHORIZE_URL;
     const audience = "api.atlassian.com";
     const redirectURL = await getCallbackURL(app);
     const responseType = "code";
