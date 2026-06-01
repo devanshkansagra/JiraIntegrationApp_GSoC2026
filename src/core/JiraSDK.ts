@@ -218,14 +218,13 @@ export class JiraSDK {
         return {
             id: response.data.id,
             key: response.data.key,
-            self: response.data.self,
             issueURL: `${siteURL}/browse/${response.data.key}`,
         };
     }
 
     private async getCloudId(accessToken: string): Promise<string> {
         const response = await this.http.get(
-            "https://api.atlassian.com/oauth/token/accessible-resources",
+            URLEnum.ACCESSIBLE_RESOURCES_URL,
             {
                 headers: {
                     Authorization: `Bearer ${accessToken}`,

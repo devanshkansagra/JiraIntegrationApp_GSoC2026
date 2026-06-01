@@ -8,6 +8,5 @@ export interface IJiraIssue {
 export interface IJiraIssueResponse {
     id: string;
     key: string;
-    self: string;
     issueURL: string;
 }
