@@ -11,6 +11,7 @@ import { sendMessage, sendNotification } from "../helpers/message";
 import { authorize } from "../oauth/authorize";
 import { JiraSDK } from "../core/JiraSDK";
 import { AuthPersistence } from "../persistence/authPersistence";
+import { ConnectJiraProject } from "../modals/ConnectJiraModal";
 
 export class Handler {
     private sdk: JiraSDK;
@@ -133,6 +134,22 @@ export class Handler {
                 `Failed to create issue: ${message}`,
             );
         }
+    }
+
+    async connect(): Promise<void> {
+        const modal = await ConnectJiraProject({
+            app: this.app,
+            read: this.read,
+            modify: this.modify,
+            http: this.http,
+            sender: this.sender,
+            room: this.room,
+            persis: this.persistence,
+            triggerId: this.triggerId,
+            id: this.app.getID()
+        });
+
+        await this.modify.getUiController().openSurfaceView(modal, { triggerId: this.triggerId }, this.sender);
     }
     async myIssues(): Promise<void> {
         await sendNotification(

@@ -9,10 +9,11 @@ import { IUser } from "@rocket.chat/apps-engine/definition/users";
 import { getCallbackURL } from "../helpers/getEndpointURLS";
 import { getCloudURL, getCredentials } from "../helpers/getSettings";
 import { AuthPersistence } from "../persistence/authPersistence";
-import { IJiraAuthToken } from "../interfaces/IJiraOAuthToken";
 import { IJiraIssue, IJiraIssueResponse } from "../interfaces/IJiraIssue";
+import { IJiraProject } from "../interfaces/IJiraProject";
 import { sendDMNotification } from "../helpers/message";
 import { URLEnum } from "../enums/URLEnum";
+import { IJiraAuthToken } from "../interfaces/IJiraOAuthToken";
 
 export class JiraSDK {
     private readonly app: JiraApp;
@@ -220,6 +221,48 @@ export class JiraSDK {
             key: response.data.key,
             issueURL: `${siteURL}/browse/${response.data.key}`,
         };
+    }
+
+    public async getJiraProjects(
+        token: IJiraAuthToken,
+        read: IRead,
+        user: IUser,
+        persis: IPersistence,
+    ): Promise<IJiraProject[]> {
+        if (this.isTokenExpired(token)) {
+            token = await this.refreshAccessToken(
+                read,
+                user,
+                this.http,
+                persis,
+            );
+        }
+
+        const cloudId = await this.getCloudId(token.accessToken);
+        const response = await this.http.get(
+            `${URLEnum.API_URL}${cloudId}/rest/api/3/project`,
+            {
+                headers: {
+                    Authorization: `Bearer ${token.accessToken}`,
+                    Accept: "application/json",
+                },
+            },
+        );
+
+        if (
+            !response.statusCode.toString().startsWith("2") ||
+            !Array.isArray(response.data)
+        ) {
+            throw new Error(
+                `Failed to fetch Jira projects. Status: ${response.statusCode}. Response: ${response.content || JSON.stringify(response.data)}`,
+            );
+        }
+
+        return response.data.map((p: any) => ({
+            id: p.id,
+            key: p.key,
+            name: p.name,
+        }));
     }
 
     private async getCloudId(accessToken: string): Promise<string> {

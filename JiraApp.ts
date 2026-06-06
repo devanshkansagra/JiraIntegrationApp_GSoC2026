@@ -4,6 +4,9 @@ import {
     IEnvironmentRead,
     ILogger,
     IHttp,
+    IModify,
+    IPersistence,
+    IRead,
 } from "@rocket.chat/apps-engine/definition/accessors";
 import { App } from "@rocket.chat/apps-engine/definition/App";
 import { IAppInfo } from "@rocket.chat/apps-engine/definition/metadata";
@@ -11,10 +14,9 @@ import { settings } from "./src/settings/settings";
 import { JiraCommand } from "./src/commands/JiraCommand";
 import { JiraSDK } from "./src/core/JiraSDK";
 import { CallbackEndpoint } from "./src/api/callback";
-import {
-    ApiVisibility,
-    ApiSecurity,
-} from "@rocket.chat/apps-engine/definition/api";
+import { ApiVisibility, ApiSecurity } from "@rocket.chat/apps-engine/definition/api";
+import { UIKitViewSubmitInteractionContext, IUIKitResponse } from "@rocket.chat/apps-engine/definition/uikit";
+import { ExecuteViewSubmitHandler } from "./src/handlers/ExecuteViewSubmitHandler";
 
 export class JiraApp extends App {
     constructor(info: IAppInfo, logger: ILogger, accessors: IAppAccessors) {
@@ -44,5 +46,24 @@ export class JiraApp extends App {
             security: ApiSecurity.UNSECURE,
             endpoints: [new CallbackEndpoint(this)],
         });
+    }
+
+    public async executeViewSubmitHandler(
+        context: UIKitViewSubmitInteractionContext,
+        read: IRead,
+        http: IHttp,
+        persistence: IPersistence,
+        modify: IModify,
+    ): Promise<void | IUIKitResponse> {
+        const handler = new ExecuteViewSubmitHandler(
+            this,
+            context,
+            read,
+            http,
+            persistence,
+            modify,
+        );
+
+        return await handler.execute();
     }
 }
