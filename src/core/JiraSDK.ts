@@ -10,12 +10,16 @@ import { getCallbackURL } from "../helpers/getEndpointURLS";
 import { getCredentials } from "../helpers/getSettings";
 import { AuthPersistence } from "../persistence/authPersistence";
 import { IJiraAuthToken } from "../interfaces/IJiraOAuthToken";
+import { IJiraProject } from "../interfaces/IJiraProject";
 import { sendDMNotification } from "../helpers/message";
+import { URLEnum } from "../enums/URLEnum";
 
 export class JiraSDK {
-    private readonly app: JiraApp;
-    constructor(app: JiraApp) {
+    private app: JiraApp;
+    private http: IHttp;
+    constructor(app: JiraApp, http: IHttp) {
         this.app = app;
+        this.http = http;
     }
 
     public async getAccessToken(
@@ -30,7 +34,7 @@ export class JiraSDK {
         const redirectUri = await getCallbackURL(this.app);
 
         const response = await http.post(
-            "https://auth.atlassian.com/oauth/token",
+            URLEnum.TOKEN_URL,
             {
                 headers: {
                     "Content-Type": "application/json",
@@ -105,7 +109,7 @@ export class JiraSDK {
         const { clientId, clientSecret } = await getCredentials(read);
 
         const response = await http.post(
-            "https://auth.atlassian.com/oauth/token",
+            URLEnum.TOKEN_URL,
             {
                 headers: {
                     "Content-Type": "application/json",
@@ -146,5 +150,75 @@ export class JiraSDK {
         await authPersistence.saveAccessToken(user, token);
 
         return token;
+    }
+
+
+    public async getJiraProjects(
+        token: IJiraAuthToken,
+        read: IRead,
+        user: IUser,
+        persis: IPersistence,
+    ): Promise<IJiraProject[]> {
+        if (this.isTokenExpired(token)) {
+            token = await this.refreshAccessToken(
+                read,
+                user,
+                this.http,
+                persis,
+            );
+        }
+
+        const cloudId = await this.getCloudId(token.accessToken);
+        const response = await this.http.get(
+            `${URLEnum.API_URL}${cloudId}/rest/api/3/project`,
+            {
+                headers: {
+                    Authorization: `Bearer ${token.accessToken}`,
+                    Accept: "application/json",
+                },
+            },
+        );
+
+        if (!response.statusCode.toString().startsWith("2") || !Array.isArray(response.data)) {
+            throw new Error(
+                `Failed to fetch Jira projects. Status: ${response.statusCode}. Response: ${response.content || JSON.stringify(response.data)}`,
+            );
+        }
+
+        return response.data.map((p: any) => ({
+            id: p.id,
+            key: p.key,
+            name: p.name,
+        }));
+    }
+
+    private async getCloudId(accessToken: string): Promise<string> {
+        const response = await this.http.get(URLEnum.ACCESSIBLE_RESOURCES_URL, {
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                Accept: "application/json",
+            },
+        });
+
+        if (
+            !response.statusCode.toString().startsWith("2") ||
+            !Array.isArray(response.data) ||
+            !response.data.length
+        ) {
+            throw new Error(
+                "Failed to retrieve accessible Jira cloud resources. Ensure the app has the correct OAuth scopes.",
+            );
+        }
+
+        return response.data[0].id;
+    }
+
+    private isTokenExpired(token: IJiraAuthToken): boolean {
+        if (!token.expiresIn || !token.updatedAt) {
+            return false;
+        }
+        const updatedAt = new Date(token.updatedAt).getTime();
+        const expiresAt = updatedAt + token.expiresIn * 1000;
+        return Date.now() >= expiresAt - 60_000;
     }
 }
