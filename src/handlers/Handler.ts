@@ -12,6 +12,9 @@ import { authorize } from "../oauth/authorize";
 import { JiraSDK } from "../core/JiraSDK";
 import { AuthPersistence } from "../persistence/authPersistence";
 import { ConnectJiraProject } from "../modals/ConnectJiraModal";
+import { ProjectMap } from "../persistence/projectMap";
+import { IJiraProjectMap } from "../interfaces/IJiraProject";
+import { CreateIssueModal } from "../modals/CreateIssueModal";
 
 export class Handler {
     private sdk: JiraSDK;
@@ -65,23 +68,18 @@ export class Handler {
     }
 
     async create(args: string[]): Promise<void> {
-        if (args.length < 3) {
-            await sendNotification(
-                this.read,
-                this.modify,
-                this.sender,
-                this.room,
-                "Usage: `/jira create [issue-type] [project-key] [summary]`\nExample: `/jira create Bug PROJ Fix login page`",
-            );
-            return;
-        }
-
         const authPersistence = new AuthPersistence(
+            this.persistence,
+            this.read.getPersistenceReader(),
+        );
+
+        const projectMap = new ProjectMap(
             this.persistence,
             this.read.getPersistenceReader(),
         );
         const token = await authPersistence.getAccessToken(this.sender);
 
+        const project = await projectMap.getProjectByRoom(this.room.id);
         if (!token) {
             await sendNotification(
                 this.read,
@@ -92,25 +90,54 @@ export class Handler {
             );
             return;
         }
+        if (args.length < 2) {
+            const modal = await CreateIssueModal({
+                app: this.app,
+                modify: this.modify,
+                http: this.http,
+                sender: this.sender,
+                room: this.room,
+                persis: this.persistence,
+                triggerId: this.triggerId,
+                id: this.app.getID(),
+                read: this.read,
+            });
 
-        const issueType = args[0];
-        const projectKey = args[1];
-        const summary = args.slice(2).join(" ");
+            await this.modify
+                .getUiController()
+                .openSurfaceView(
+                    modal,
+                    { triggerId: this.triggerId },
+                    this.sender,
+                );
+        } else {
+            const issueType = args[0];
+            const summary = args.slice(1).join(" ");
 
-        try {
-            const created = await this.sdk.createJiraIssue(
-                this.read,
-                this.persistence,
-                this.sender,
-                { projectKey, summary, issueType },
-            );
+            if (!project) {
+                await sendNotification(
+                    this.read,
+                    this.modify,
+                    this.sender,
+                    this.room,
+                    "This channel is not linked to any jira project. Please run `/jira connect` to connect this channel with a project",
+                );
+                return;
+            }
+            try {
+                const created = await this.sdk.createJiraIssue(
+                    this.read,
+                    this.persistence,
+                    this.sender,
+                    { projectKey: project.projectKey, summary, issueType },
+                );
 
-            await sendMessage(
-                this.read,
-                this.modify,
-                this.room,
-                this.sender,
-                `## 🎫 New Jira Ticket Created!
+                await sendMessage(
+                    this.read,
+                    this.modify,
+                    this.room,
+                    this.sender,
+                    `## 🎫 New Jira Ticket Created!
                 🔑 **Key:** ${created.key}
                 📝 **Summary:** ${summary}
                 📄 **Description:** N/A
@@ -120,19 +147,20 @@ export class Handler {
                 🙋 **Raised By:** @${this.sender.username}
                 🔗 **Link:** ${created.issueURL}
                 `,
-            );
-        } catch (error) {
-            const message =
-                error instanceof Error
-                    ? error.message
-                    : "An unexpected error occurred.";
-            await sendNotification(
-                this.read,
-                this.modify,
-                this.sender,
-                this.room,
-                `Failed to create issue: ${message}`,
-            );
+                );
+            } catch (error) {
+                const message =
+                    error instanceof Error
+                        ? error.message
+                        : "An unexpected error occurred.";
+                await sendNotification(
+                    this.read,
+                    this.modify,
+                    this.sender,
+                    this.room,
+                    `Failed to create issue: ${message}`,
+                );
+            }
         }
     }
 
@@ -146,10 +174,12 @@ export class Handler {
             room: this.room,
             persis: this.persistence,
             triggerId: this.triggerId,
-            id: this.app.getID()
+            id: this.app.getID(),
         });
 
-        await this.modify.getUiController().openSurfaceView(modal, { triggerId: this.triggerId }, this.sender);
+        await this.modify
+            .getUiController()
+            .openSurfaceView(modal, { triggerId: this.triggerId }, this.sender);
     }
     async myIssues(): Promise<void> {
         await sendNotification(

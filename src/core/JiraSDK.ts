@@ -197,6 +197,29 @@ export class JiraSDK {
             };
         }
 
+        if (issue.assignee) {
+            const accountResult = await this.getAccountId(
+                issue.assignee.emails[0].address,
+                token,
+                cloudId,
+            );
+            if (accountResult.success) {
+                issueBody.fields.assignee = {
+                    accountId: accountResult.accountId,
+                };
+            }
+        }
+
+        if (issue.priority) {
+            issueBody.fields.priority = { name: issue.priority };
+        }
+
+        if (issue.deadline) {
+            issueBody.fields.duedate = issue.deadline
+                .toISOString()
+                .split("T")[0];
+        }
+
         const response = await this.http.post(
             `${URLEnum.API_URL}${cloudId}/rest/api/3/issue`,
             {
@@ -263,6 +286,27 @@ export class JiraSDK {
             key: p.key,
             name: p.name,
         }));
+    }
+
+    private async getAccountId(
+        email: string,
+        token: IJiraAuthToken,
+        cloudID: string,
+    ) {
+        const response = await this.http.get(
+            `${URLEnum.API_URL}${cloudID}/rest/api/3/user/search?query=${encodeURIComponent(email)}`,
+            {
+                headers: {
+                    Authorization: `Bearer ${token?.accessToken}`,
+                    Accept: "application/json",
+                },
+            },
+        );
+
+        if (response?.data?.length > 0) {
+            return { success: true, accountId: response.data[0].accountId };
+        }
+        return { success: false, error: "User not found in Jira" };
     }
 
     private async getCloudId(accessToken: string): Promise<string> {
