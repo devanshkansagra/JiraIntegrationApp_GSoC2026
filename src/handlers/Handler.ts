@@ -9,6 +9,9 @@ import { IUser } from "@rocket.chat/apps-engine/definition/users";
 import { JiraApp } from "../../JiraApp";
 import { sendNotification } from "../helpers/message";
 import { authorize } from "../oauth/authorize";
+import { JiraSDK } from "../core/JiraSDK";
+import { AuthPersistence } from "../persistence/authPersistence";
+import { ConnectJiraProject } from "../modals/ConnectJiraModal";
 
 export class Handler {
     constructor(
@@ -54,6 +57,22 @@ export class Handler {
 
     async create(args: string[]): Promise<void> {
         await sendNotification(this.read, this.modify, this.sender, this.room, "Handler for create");
+    }
+
+    async connect(): Promise<void> {
+        const modal = await ConnectJiraProject({
+            app: this.app,
+            read: this.read,
+            modify: this.modify,
+            http: this.http,
+            sender: this.sender,
+            room: this.room,
+            persis: this.persistence,
+            triggerId: this.triggerId,
+            id: this.app.getID()
+        });
+
+        await this.modify.getUiController().openSurfaceView(modal, { triggerId: this.triggerId }, this.sender);
     }
     async myIssues(): Promise<void> {
         await sendNotification(this.read, this.modify, this.sender, this.room, "Handler for my issues");
