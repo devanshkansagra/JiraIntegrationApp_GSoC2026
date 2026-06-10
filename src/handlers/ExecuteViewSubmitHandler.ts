@@ -92,40 +92,54 @@ export class ExecuteViewSubmitHandler {
                     ]?.[ElementEnum.JIRA_CREATE_ISSUE_DEADLINE_ACTION];
 
                 const assignee = assigneeId
-                    ? await this.read.getUserReader().getById(assigneeId)
+                    ? await this.read.getUserReader().getByUsername(assigneeId)
                     : undefined;
                 const deadline = deadlineStr
                     ? new Date(deadlineStr)
                     : undefined;
 
-                const created = await this.app
-                    .getJiraSDK()
-                    .createJiraIssue(this.read, this.persistence, user, {
-                        projectKey: project,
-                        summary,
-                        issueType,
-                        description,
-                        assignee,
-                        priority,
-                        deadline,
-                    });
+                try {
+                    const created = await this.app
+                        .getJiraSDK()
+                        .createJiraIssue(this.read, this.persistence, user, {
+                            projectKey: project,
+                            summary,
+                            issueType,
+                            description,
+                            assignee,
+                            priority,
+                            deadline,
+                        });
 
-                await sendMessage(
-                    this.read,
-                    this.modify,
-                    room,
-                    user,
-                    `## 🎫 New Jira Ticket Created!
-                    🔑 **Key:** ${created.key}
-                    📝 **Summary:** ${summary}
-                    📄 **Description:** ${description}
-                    👤 **Assignee:** @${assigneeId}
-                    📅 **Deadline:** ${deadline}
-                    🔵 **Status:** Todo
-                    🙋 **Raised By:** @${user.username}
-                    🔗 **Link:** ${created.issueURL}
-                    `,
-                );
+                    await sendMessage(
+                        this.read,
+                        this.modify,
+                        room,
+                        user,
+                        `## 🎫 New Jira Ticket Created!
+                        🔑 **Key:** ${created.key}
+                        📝 **Summary:** ${summary}
+                        📄 **Description:** ${description}
+                        👤 **Assignee:** ${assignee ? `@${assignee.username}` : "Unassigned"}
+                        📅 **Deadline:** ${deadlineStr ? deadlineStr : "N/A"}
+                        🔵 **Status:** Todo
+                        🙋 **Raised By:** @${user.username}
+                        🔗 **Link:** ${created.issueURL}
+                        `,
+                    );
+                } catch (error) {
+                    const message =
+                        error instanceof Error
+                            ? error.message
+                            : "An unexpected error occurred.";
+                    await sendNotification(
+                        this.read,
+                        this.modify,
+                        user,
+                        room,
+                        `Failed to create issue: ${message}`,
+                    );
+                }
 
                 break;
             }
