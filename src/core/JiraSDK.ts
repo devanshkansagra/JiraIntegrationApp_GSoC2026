@@ -256,15 +256,10 @@ export class JiraSDK {
         user: IUser,
         persis: IPersistence,
     ): Promise<IJiraProject[]> {
-        token = await this.refreshAccessToken(
-                read,
-                user,
-                this.http,
-                persis,
-            );
+        token = await this.refreshAccessToken(read, user, this.http, persis);
 
-            const cloudId = await this.getCloudId(token.accessToken);
-            const response = await this.http.get(
+        const cloudId = token.cloudID;
+        const response = await this.http.get(
             `${URLEnum.API_URL}${cloudId}/rest/api/3/project`,
             {
                 headers: {
@@ -349,7 +344,7 @@ export class JiraSDK {
         cloudID: string,
     ) {
         const response = await this.http.get(
-            `https://api.atlassian.com/ex/jira/${cloudID}/rest/api/3/user/search?query=${encodeURIComponent(email)}`,
+            `${URLEnum.API_URL}${cloudID}/rest/api/3/user/search?query=${encodeURIComponent(email)}`,
             {
                 headers: {
                     Authorization: `Bearer ${token?.accessToken}`,
