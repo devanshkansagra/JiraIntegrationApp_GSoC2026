@@ -16,6 +16,7 @@ import { ProjectMap } from "../persistence/projectMap";
 import { IJiraProjectMap } from "../interfaces/IJiraProject";
 import { CreateIssueModal } from "../modals/CreateIssueModal";
 import { IJiraAuthToken } from "../interfaces/IJiraOAuthToken";
+import { getCloudURL } from "../helpers/getSettings";
 
 export class Handler {
     private sdk: JiraSDK;
@@ -302,13 +303,152 @@ export class Handler {
         }
     }
     async share(args: string[]): Promise<void> {
-        await sendNotification(
-            this.read,
-            this.modify,
-            this.sender,
-            this.room,
-            "Handler for share",
+        if (args.length < 2) {
+            await sendNotification(
+                this.read,
+                this.modify,
+                this.sender,
+                this.room,
+                "Usage: `/jira share [issue-key] [@username]`\nExample: `/jira share PROJ-123 @john`",
+            );
+            return;
+        }
+
+        const issueKey = args[0];
+        const reciever = args[1];
+        const authPersistence = new AuthPersistence(
+            this.persistence,
+            this.read.getPersistenceReader(),
         );
+        const token = (await authPersistence.getAccessToken(
+            this.sender,
+        )) as IJiraAuthToken;
+
+        if (!token) {
+            await sendNotification(
+                this.read,
+                this.modify,
+                this.sender,
+                this.room,
+                "You are not authenticated with Jira. Please run `/jira login` first.",
+            );
+            return;
+        }
+
+        if (reciever.startsWith("@")) {
+            const username = reciever.slice(1);
+            const user = await this.read
+                .getUserReader()
+                .getByUsername(username);
+
+            if (!user) {
+                await sendNotification(
+                    this.read,
+                    this.modify,
+                    this.sender,
+                    this.room,
+                    `User @${username} not found.`,
+                );
+                return;
+            }
+
+            try {
+                const issue = await this.sdk.getJiraIssue(
+                    token,
+                    this.read,
+                    this.sender,
+                    this.persistence,
+                    issueKey,
+                );
+
+                const siteURL = await getCloudURL(this.read);
+                const issueURL = `${siteURL}/browse/${issueKey}`;
+
+                await sendDM(
+                    this.read,
+                    this.modify,
+                    user,
+                    `### @${this.sender.name} has shared you an issue
+                    🔑 **Key:** ${issueKey}
+                    📝 **Summary:** ${issue.summary}
+                    🏷️ **Type:** ${issue.issueType}
+                    📄 **Description:** ${issue.description || "N/A"}
+                    ⚡ **Priority:** ${issue.priority || "N/A"}
+                    📅 **Deadline:** ${issue.deadline ? issue.deadline.toDateString() : "N/A"}
+                    🔗 **Link:** ${issueURL}
+                    `,
+                );
+            } catch (error) {
+                const message =
+                    error instanceof Error
+                        ? error.message
+                        : "An unexpected error occurred.";
+                await sendNotification(
+                    this.read,
+                    this.modify,
+                    this.sender,
+                    this.room,
+                    `Failed to share issue: ${message}`,
+                );
+            }
+        } else if (reciever.startsWith("#")) {
+            const roomName = reciever.slice(1);
+            const channel = await this.read
+                .getRoomReader()
+                .getByName(roomName);
+
+            if (!channel) {
+                await sendNotification(
+                    this.read,
+                    this.modify,
+                    this.sender,
+                    this.room,
+                    `Room #${roomName} not found.`,
+                );
+                return;
+            }
+
+            try {
+                const issue = await this.sdk.getJiraIssue(
+                    token,
+                    this.read,
+                    this.sender,
+                    this.persistence,
+                    issueKey,
+                );
+
+                const siteURL = await getCloudURL(this.read);
+                const issueURL = `${siteURL}/browse/${issueKey}`;
+
+                await sendMessage(
+                    this.read,
+                    this.modify,
+                    channel,
+                    this.sender,
+                    `### @${this.sender.name} has shared an issue
+                    🔑 **Key:** ${issueKey}
+                    📝 **Summary:** ${issue.summary}
+                    🏷️ **Type:** ${issue.issueType}
+                    📄 **Description:** ${issue.description || "N/A"}
+                    ⚡ **Priority:** ${issue.priority || "N/A"}
+                    📅 **Deadline:** ${issue.deadline ? issue.deadline.toDateString() : "N/A"}
+                    🔗 **Link:** ${issueURL}
+                    `,
+                );
+            } catch (error) {
+                const message =
+                    error instanceof Error
+                        ? error.message
+                        : "An unexpected error occurred.";
+                await sendNotification(
+                    this.read,
+                    this.modify,
+                    this.sender,
+                    this.room,
+                    `Failed to share issue: ${message}`,
+                );
+            }
+        }
     }
     async setCommands(args: string[]): Promise<void> {
         await sendNotification(
