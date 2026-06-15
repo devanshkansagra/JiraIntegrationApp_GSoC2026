@@ -277,6 +277,12 @@ export class JiraSDK {
             },
         );
 
+        if (!response.statusCode.toString().startsWith("2") || !response.data) {
+            throw new Error(
+                "Unable to fetch the Jira issue, please check the issueKey",
+            );
+        }
+
         const fields = response.data.fields;
 
         const issue: IJiraIssue = {
@@ -323,7 +329,14 @@ export class JiraSDK {
         user: IUser,
         persis: IPersistence,
     ): Promise<IJiraProject[]> {
-        token = await this.refreshAccessToken(read, user, this.http, persis);
+        if (!this.isTokenExpired(token)) {
+            token = await this.refreshAccessToken(
+                read,
+                user,
+                this.http,
+                persis,
+            );
+        }
 
         const cloudId = token.cloudID;
         const response = await this.http.get(
