@@ -329,7 +329,7 @@ export class JiraSDK {
         user: IUser,
         persis: IPersistence,
     ): Promise<IJiraProject[]> {
-        if (!this.isTokenExpired(token)) {
+        if (this.isTokenExpired(token)) {
             token = await this.refreshAccessToken(
                 read,
                 user,

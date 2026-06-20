@@ -17,6 +17,10 @@ import { IJiraProjectMap } from "../interfaces/IJiraProject";
 import { CreateIssueModal } from "../modals/CreateIssueModal";
 import { IJiraAuthToken } from "../interfaces/IJiraOAuthToken";
 import { getCloudURL } from "../helpers/getSettings";
+import {
+    issueCreatedMessage,
+    issueSharedMessage,
+} from "../helpers/messageTemplates";
 
 export class Handler {
     private sdk: JiraSDK;
@@ -139,16 +143,12 @@ export class Handler {
                     this.modify,
                     this.room,
                     this.sender,
-                    `## 🎫 New Jira Ticket Created!
-                🔑 **Key:** ${created.key}
-                📝 **Summary:** ${summary}
-                📄 **Description:** N/A
-                👤 **Assignee:** Unassigned
-                📅 **Deadline:** N/A
-                🔵 **Status:** Todo
-                🙋 **Raised By:** @${this.sender.username}
-                🔗 **Link:** ${created.issueURL}
-                `,
+                    issueCreatedMessage({
+                        key: created.key,
+                        summary,
+                        raisedByUsername: this.sender.username,
+                        issueURL: created.issueURL,
+                    }),
                 );
             } catch (error) {
                 const message =
@@ -368,15 +368,17 @@ export class Handler {
                     this.read,
                     this.modify,
                     user,
-                    `### @${this.sender.name} has shared you an issue
-                    🔑 **Key:** ${issueKey}
-                    📝 **Summary:** ${issue.summary}
-                    🏷️ **Type:** ${issue.issueType}
-                    📄 **Description:** ${issue.description || "N/A"}
-                    ⚡ **Priority:** ${issue.priority || "N/A"}
-                    📅 **Deadline:** ${issue.deadline ? issue.deadline.toDateString() : "N/A"}
-                    🔗 **Link:** ${issueURL}
-                    `,
+                    issueSharedMessage({
+                        sharedByName: this.sender.name,
+                        issueKey,
+                        summary: issue.summary,
+                        issueType: issue.issueType,
+                        description: issue.description,
+                        priority: issue.priority,
+                        deadline: issue.deadline,
+                        issueURL,
+                        isDirect: true,
+                    }),
                 );
             } catch (error) {
                 const message =
@@ -393,9 +395,7 @@ export class Handler {
             }
         } else if (reciever.startsWith("#")) {
             const roomName = reciever.slice(1);
-            const channel = await this.read
-                .getRoomReader()
-                .getByName(roomName);
+            const channel = await this.read.getRoomReader().getByName(roomName);
 
             if (!channel) {
                 await sendNotification(
@@ -425,15 +425,17 @@ export class Handler {
                     this.modify,
                     channel,
                     this.sender,
-                    `### @${this.sender.name} has shared an issue
-                    🔑 **Key:** ${issueKey}
-                    📝 **Summary:** ${issue.summary}
-                    🏷️ **Type:** ${issue.issueType}
-                    📄 **Description:** ${issue.description || "N/A"}
-                    ⚡ **Priority:** ${issue.priority || "N/A"}
-                    📅 **Deadline:** ${issue.deadline ? issue.deadline.toDateString() : "N/A"}
-                    🔗 **Link:** ${issueURL}
-                    `,
+                    issueSharedMessage({
+                        sharedByName: this.sender.name,
+                        issueKey,
+                        summary: issue.summary,
+                        issueType: issue.issueType,
+                        description: issue.description,
+                        priority: issue.priority,
+                        deadline: issue.deadline,
+                        issueURL,
+                        isDirect: false,
+                    }),
                 );
             } catch (error) {
                 const message =
