@@ -250,13 +250,93 @@ export class JiraSDK {
         };
     }
 
+    public async getJiraIssue(
+        token: IJiraAuthToken,
+        read: IRead,
+        user: IUser,
+        persis: IPersistence,
+        issueKey: string,
+    ): Promise<IJiraIssue> {
+        if (this.isTokenExpired(token)) {
+            token = await this.refreshAccessToken(
+                read,
+                user,
+                this.http,
+                persis,
+            );
+        }
+
+        const cloudID = token.cloudID;
+        const response = await this.http.get(
+            `${URLEnum.API_URL}${cloudID}/rest/api/3/issue/${issueKey}`,
+            {
+                headers: {
+                    Authorization: `Bearer ${token?.accessToken}`,
+                    Accept: "application/json",
+                },
+            },
+        );
+
+        if (!response.statusCode.toString().startsWith("2") || !response.data) {
+            throw new Error(
+                "Unable to fetch the Jira issue, please check the issueKey",
+            );
+        }
+
+        const fields = response.data.fields;
+
+        const issue: IJiraIssue = {
+            projectKey: fields.project?.key,
+            summary: fields.summary,
+            issueType: fields.issuetype?.name,
+            priority: fields.priority?.name,
+        };
+
+        if (fields.description) {
+            issue.description = this.extractTextFromADF(fields.description);
+        }
+
+        if (fields.duedate) {
+            issue.deadline = new Date(fields.duedate);
+        }
+
+        return issue;
+    }
+
+    // Added this because Jira api returns `description` in Atlassian Document Format
+    // This function convert it into string
+    private extractTextFromADF(node: any): string {
+        if (!node) {
+            return "";
+        }
+
+        if (node.type === "text") {
+            return node.text || "";
+        }
+
+        if (!Array.isArray(node.content)) {
+            return "";
+        }
+
+        return node.content
+            .map((child: any) => this.extractTextFromADF(child))
+            .join("");
+    }
+
     public async getJiraProjects(
         token: IJiraAuthToken,
         read: IRead,
         user: IUser,
         persis: IPersistence,
     ): Promise<IJiraProject[]> {
-        token = await this.refreshAccessToken(read, user, this.http, persis);
+        if (this.isTokenExpired(token)) {
+            token = await this.refreshAccessToken(
+                read,
+                user,
+                this.http,
+                persis,
+            );
+        }
 
         const cloudId = token.cloudID;
         const response = await this.http.get(

@@ -15,6 +15,7 @@ import { ElementEnum } from "../enums/ElementEnum";
 import { IRoom } from "@rocket.chat/apps-engine/definition/rooms";
 import { ProjectMap } from "../persistence/projectMap";
 import { sendMessage, sendNotification } from "../helpers/message";
+import { issueCreatedMessage } from "../helpers/messageTemplates";
 
 export class ExecuteViewSubmitHandler {
     private context: UIKitViewSubmitInteractionContext;
@@ -116,16 +117,15 @@ export class ExecuteViewSubmitHandler {
                         this.modify,
                         room,
                         user,
-                        `## 🎫 New Jira Ticket Created!
-                        🔑 **Key:** ${created.key}
-                        📝 **Summary:** ${summary}
-                        📄 **Description:** ${description}
-                        👤 **Assignee:** ${assignee ? `@${assignee.username}` : "Unassigned"}
-                        📅 **Deadline:** ${deadlineStr ? deadlineStr : "N/A"}
-                        🔵 **Status:** Todo
-                        🙋 **Raised By:** @${user.username}
-                        🔗 **Link:** ${created.issueURL}
-                        `,
+                        issueCreatedMessage({
+                            key: created.key,
+                            summary,
+                            description,
+                            assigneeUsername: assignee?.username,
+                            deadline: deadlineStr,
+                            raisedByUsername: user.username,
+                            issueURL: created.issueURL,
+                        }),
                     );
                 } catch (error) {
                     const message =
