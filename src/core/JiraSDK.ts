@@ -49,6 +49,8 @@ export class JiraSDK {
 
         const responseData = response.data;
 
+        const cloudId = await this.getCloudId(responseData.access_token);
+
         if (!response.statusCode.toString().startsWith("2") || !responseData) {
             throw new Error(
                 `Failed to exchange Jira authorization code. Status: ${response.statusCode}. Response: ${response.content || JSON.stringify(response.data)}`,
@@ -62,6 +64,7 @@ export class JiraSDK {
             expiresIn: responseData.expires_in,
             scope: responseData.scope,
             tokenType: responseData.token_type,
+            cloudID: cloudId,
             createdAt: now,
             updatedAt: now,
         };
@@ -134,6 +137,7 @@ export class JiraSDK {
             accessToken: responseData.access_token,
             refreshToken:
                 responseData.refresh_token || existingToken.refreshToken,
+            cloudID: existingToken.cloudID,
             expiresIn: responseData.expires_in,
             scope: responseData.scope,
             tokenType: responseData.token_type,
@@ -173,7 +177,7 @@ export class JiraSDK {
             );
         }
 
-        const cloudId = await this.getCloudId(token.accessToken);
+        const cloudId = token.cloudID;
         const siteURL = await getCloudURL(read);
 
         const issueBody: Record<string, any> = {
@@ -232,7 +236,7 @@ export class JiraSDK {
             },
         );
 
-        if (!response.statusCode.toString().startsWith("2") || !response.data) {
+        if (!response.statusCode.toString().startsWith("2")) {
             throw new Error(
                 `Failed to create Jira issue. Status: ${response.statusCode}. ` +
                     `Response: ${response.content || JSON.stringify(response.data)}`,
@@ -252,16 +256,9 @@ export class JiraSDK {
         user: IUser,
         persis: IPersistence,
     ): Promise<IJiraProject[]> {
-        if (this.isTokenExpired(token)) {
-            token = await this.refreshAccessToken(
-                read,
-                user,
-                this.http,
-                persis,
-            );
-        }
+        token = await this.refreshAccessToken(read, user, this.http, persis);
 
-        const cloudId = await this.getCloudId(token.accessToken);
+        const cloudId = token.cloudID;
         const response = await this.http.get(
             `${URLEnum.API_URL}${cloudId}/rest/api/3/project`,
             {
@@ -287,6 +284,59 @@ export class JiraSDK {
             name: p.name,
         }));
     }
+    public async assignIssue(
+        read: IRead,
+        persis: IPersistence,
+        sender: IUser,
+        token: IJiraAuthToken,
+        assignData: { issueKey: string; username: string },
+    ) {
+        const { issueKey, username } = assignData;
+
+        if (this.isTokenExpired(token)) {
+            token = await this.refreshAccessToken(
+                read,
+                sender,
+                this.http,
+                persis,
+            );
+        }
+
+        const cloudID = token.cloudID;
+
+        const assigneeEmail = (
+            await read.getUserReader().getByUsername(username)
+        ).emails[0].address;
+
+        const { accountId } = await this.getAccountId(
+            assigneeEmail,
+            token,
+            cloudID,
+        );
+
+        const response = await this.http.put(
+            `${URLEnum.API_URL}${cloudID}/rest/api/3/issue/${issueKey}/assignee`,
+            {
+                headers: {
+                    Authorization: `Bearer ${token?.accessToken}`,
+                    Accept: "application/json",
+                    "Content-Type": "application/json",
+                },
+                content: JSON.stringify({
+                    accountId: accountId,
+                }),
+            },
+        );
+
+        if (!response.statusCode.toString().startsWith("2")) {
+            throw new Error(
+                `Failed to assign Jira issue. Status: ${response.statusCode}. ` +
+                    `Response: ${response.content || JSON.stringify(response.data)}`,
+            );
+        }
+
+        return { success: true, message: "Issue assigned to user" };
+    }
 
     private async getAccountId(
         email: string,
@@ -310,15 +360,12 @@ export class JiraSDK {
     }
 
     private async getCloudId(accessToken: string): Promise<string> {
-        const response = await this.http.get(
-            URLEnum.ACCESSIBLE_RESOURCES_URL,
-            {
-                headers: {
-                    Authorization: `Bearer ${accessToken}`,
-                    Accept: "application/json",
-                },
+        const response = await this.http.get(URLEnum.ACCESSIBLE_RESOURCES_URL, {
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                Accept: "application/json",
             },
-        );
+        });
 
         if (
             !response.statusCode.toString().startsWith("2") ||

@@ -7,7 +7,7 @@ import {
 import { IRoom } from "@rocket.chat/apps-engine/definition/rooms";
 import { IUser } from "@rocket.chat/apps-engine/definition/users";
 import { JiraApp } from "../../JiraApp";
-import { sendMessage, sendNotification } from "../helpers/message";
+import { sendDM, sendMessage, sendNotification } from "../helpers/message";
 import { authorize } from "../oauth/authorize";
 import { JiraSDK } from "../core/JiraSDK";
 import { AuthPersistence } from "../persistence/authPersistence";
@@ -15,6 +15,7 @@ import { ConnectJiraProject } from "../modals/ConnectJiraModal";
 import { ProjectMap } from "../persistence/projectMap";
 import { IJiraProjectMap } from "../interfaces/IJiraProject";
 import { CreateIssueModal } from "../modals/CreateIssueModal";
+import { IJiraAuthToken } from "../interfaces/IJiraOAuthToken";
 
 export class Handler {
     private sdk: JiraSDK;
@@ -201,13 +202,104 @@ export class Handler {
         );
     }
     async assign(args: string[]): Promise<void> {
-        await sendNotification(
-            this.read,
-            this.modify,
-            this.sender,
-            this.room,
-            "Handler for assign",
+        if (args.length < 2) {
+            await sendNotification(
+                this.read,
+                this.modify,
+                this.sender,
+                this.room,
+                "Usage: `/jira assign [issue-key] [@username]`\nExample: `/jira assign PROJ-123 @john (or me -> for self assign)`",
+            );
+            return;
+        }
+
+        const authPersistence = new AuthPersistence(
+            this.persistence,
+            this.read.getPersistenceReader(),
         );
+        const token = await authPersistence.getAccessToken(this.sender);
+
+        if (!token) {
+            await sendNotification(
+                this.read,
+                this.modify,
+                this.sender,
+                this.room,
+                "You are not authenticated with Jira. Please run `/jira login` first.",
+            );
+            return;
+        }
+
+        const issueKey = args[0];
+        let username: string = args[1];
+
+        if (username === "me") {
+            username = (await this.read.getUserReader().getById(this.sender.id))
+                .username;
+        } else {
+            username = args[1].slice(1);
+        }
+        const assignee = await this.read
+            .getUserReader()
+            .getByUsername(username);
+
+        if (!assignee) {
+            await sendNotification(
+                this.read,
+                this.modify,
+                this.sender,
+                this.room,
+                `User @${username} not found.`,
+            );
+            return;
+        }
+
+        try {
+            const assignIssue = await this.sdk.assignIssue(
+                this.read,
+                this.persistence,
+                this.sender,
+                token as IJiraAuthToken,
+                { issueKey, username },
+            );
+
+            if (assignIssue.success) {
+                await sendNotification(
+                    this.read,
+                    this.modify,
+                    this.sender,
+                    this.room,
+                    `Issue **${issueKey}** has been assigned to @${username}.`,
+                );
+                if (args[1] === "me") {
+                    await sendDM(
+                        this.read,
+                        this.modify,
+                        assignee,
+                        `You have self assigned to Jira issue **${issueKey}**`,
+                    );
+                } else {
+                    await sendDM(
+                        this.read,
+                        this.modify,
+                        assignee,
+                        `You have been assigned to Jira issue **${issueKey}** by @${this.sender.username}.`,
+                    );
+                }
+            }
+        } catch (error) {
+            const message =
+                error instanceof Error
+                    ? error.message
+                    : "An unexpected error occurred.";
+            await sendNotification(
+                this.read,
+                this.modify,
+                this.sender,
+                this.room,
+                `Failed to assign issue: ${message}`,
+            );
+        }
     }
     async share(args: string[]): Promise<void> {
         await sendNotification(
